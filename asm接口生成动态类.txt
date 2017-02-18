@@ -1,0 +1,147 @@
+ ASM + 接口 动态生成类
+标签： stringnullclassloaderexceptionmethodsclass
+2012-03-23 22:16 2091人阅读 评论(0) 收藏 举报
+版权声明：本文为博主原创文章，未经博主允许不得转载。
+好吧 ,我承认上篇文章 确认让人看不明白ASM到底有什么用,那么这篇来举个例子吧 ,比如 我制定任意的接口(接口名称,接口方法都是随意的)
+[java] view plain copy
+
+
+package com.test;  
+  
+public interface ISayHello  
+{  
+    public void MethodA();  
+      
+    public void MethodB();  
+      
+    public void Abs();  
+}  
+ 
+然后我想让ASM帮我为接口生成一个继承类,并实现所有的方法,方法就 System.out.println("[当前方法名]") 虽然例子很简单,先看完
+[java] view plain copy
+package com.test;  
+  
+import java.io.FileOutputStream;  
+import java.lang.reflect.Method;  
+  
+import org.objectweb.asm.ClassWriter;  
+import org.objectweb.asm.Label;  
+import org.objectweb.asm.MethodVisitor;  
+import org.objectweb.asm.Opcodes;  
+  
+public class InterfaceHandler extends ClassLoader implements Opcodes  
+{  
+    public static void main(final String args[]) throws Exception  
+    {  
+        ISayHello iSayHello = (ISayHello)MakeClass(ISayHello.class);  
+          
+        iSayHello.MethodA();  
+          
+        iSayHello.MethodB();  
+          
+        iSayHello.Abs();  
+          
+    }  
+      
+    public static Object MakeClass(Class clazz) throws Exception  
+    {  
+        String name = clazz.getSimpleName();  
+        String className = name + "$imp";  
+          
+        String Iter = clazz.getName().replaceAll("\\.", "/");  
+          
+        ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);  
+        cw.visit(V1_5,  
+            ACC_PUBLIC + ACC_SUPER,  
+            className,  
+            null,  
+            "java/lang/Object",  
+            new String[] {Iter});  
+          
+        //空构造  
+        MethodVisitor mv = cw.visitMethod(ACC_PUBLIC,  
+            "<init>",  
+            "()V",  
+            null,  
+            null);  
+        mv.visitVarInsn(ALOAD, 0);  
+        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/Object", "<init>", "()V");  
+        mv.visitInsn(RETURN);  
+        mv.visitMaxs(1, 1);  
+        mv.visitEnd();  
+          
+        Method[] methods = clazz.getMethods();  
+        for (Method method : methods)  
+        {  
+            MakeMethod(cw, method.getName(), className);  
+        }  
+          
+        cw.visitEnd();  
+        /* 
+         * 写入文件 
+         */  
+        byte[] code = cw.toByteArray();  
+        FileOutputStream fos = new FileOutputStream(className);  
+        fos.write(code);  
+        fos.close();  
+          
+        /* 
+         * 从文件加载类 
+         */  
+        InterfaceHandler loader = new InterfaceHandler();  
+        Class exampleClass = loader.defineClass(className,  
+            code,  
+            0,  
+            code.length);  
+          
+        /* 
+         * 反射生成实例 
+         */  
+        Object obj = exampleClass.getConstructor(null).newInstance(null);  
+          
+        return obj;  
+    }  
+      
+    private static void MakeMethod(ClassWriter cw, String MethodName, String className)  
+    {  
+        MethodVisitor mv = cw.visitMethod(ACC_PUBLIC,  
+            MethodName,  
+            "()V",  
+            null,  
+            null);  
+        mv.visitCode();  
+        Label l0 = new Label();  
+        mv.visitLabel(l0);  
+        mv.visitLineNumber(8, l0);  
+        mv.visitFieldInsn(GETSTATIC,  
+            "java/lang/System",  
+            "out",  
+            "Ljava/io/PrintStream;");  
+        mv.visitLdcInsn("调用方法 [" + MethodName + "]");  
+        mv.visitMethodInsn(INVOKEVIRTUAL,  
+            "java/io/PrintStream",  
+            "println",  
+            "(Ljava/lang/String;)V");  
+        Label l1 = new Label();  
+        mv.visitLabel(l1);  
+        mv.visitLineNumber(9, l1);  
+        mv.visitInsn(RETURN);  
+        Label l2 = new Label();  
+        mv.visitLabel(l2);  
+        mv.visitLocalVariable("this",  
+            "L" + className + ";",  
+            null,  
+            l0,  
+            l2,  
+            0);  
+        mv.visitMaxs(2, 1);  
+        mv.visitEnd();  
+    }  
+}  
+
+好了,运行结果:
+调用方法 [MethodA]
+调用方法 [MethodB]
+调用方法 [Abs]
+如果在这个例子的基础上,让生成对象由spring托管然后根据接口名去查找对应的 sql_ID . OK,太棒了. 
+不过别忘了最好还结合标注一起使用,这样可以确认哪些接口是用于 Sql滴
